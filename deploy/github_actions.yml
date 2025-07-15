@@ -1,0 +1,563 @@
+name: ICD-10 Prediction MLOps Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: icd10-predictor
+  ECS_CLUSTER: icd10-mlops-cluster
+  ECS_SERVICE: icd10-predictor-service
+  LAMBDA_FUNCTION: icd10-predictor-lambda
+
+jobs:
+  # =============================================================================
+  # Code Quality and Testing
+  # =============================================================================
+  test:
+    name: Test and Quality Check
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov black flake8 mypy
+    
+    - name: Run linting
+      run: |
+        echo "🔍 Running code linting..."
+        black --check --diff .
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+    
+    - name: Run type checking
+      run: |
+        echo "🔍 Running type checking..."
+        mypy model/ app/ lambda_api/ --ignore-missing-imports
+    
+    - name: Run unit tests
+      run: |
+        echo "🧪 Running unit tests..."
+        pytest tests/ -v --cov=model --cov=app --cov=lambda_api --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: Run security scan
+      run: |
+        echo "🔒 Running security scan..."
+        pip install bandit
+        bandit -r . -f json -o bandit-report.json || true
+    
+    - name: Upload security report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-report
+        path: bandit-report.json
+
+  # =============================================================================
+  # Data Generation and Validation
+  # =============================================================================
+  data-pipeline:
+    name: Data Pipeline Validation
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Generate synthetic data
+      run: |
+        echo "📊 Generating synthetic EHR data..."
+        python data_gen.py
+    
+    - name: Validate data quality
+      run: |
+        echo "🔍 Validating data quality..."
+        python -c "
+        import pandas as pd
+        import json
+        
+        # Load generated data
+        df = pd.read_csv('data/raw/synthetic_ehr_data.csv')
+        
+        # Basic quality checks
+        assert len(df) >= 1000, f'Expected at least 1000 records, got {len(df)}'
+        assert df['doctor_notes'].notna().all(), 'Found null doctor notes'
+        assert (df['doctor_notes'].str.len() > 10).all(), 'Found notes too short'
+        assert df['age'].between(0, 120).all(), 'Invalid age values'
+        assert df['gender'].isin(['M', 'F']).all(), 'Invalid gender values'
+        
+        # ICD-10 code validation
+        import re
+        pattern = r'^[A-Z][0-9]{2}(\.[0-9A-Z]{1,4})?$'
+        for codes in df['icd10_codes']:
+            for code in codes.split('|'):
+                assert re.match(pattern, code), f'Invalid ICD-10 code: {code}'
+        
+        print('✅ All data quality checks passed!')
+        "
+    
+    - name: Upload generated data
+      uses: actions/upload-artifact@v3
+      with:
+        name: synthetic-data
+        path: data/raw/
+
+  # =============================================================================
+  # Model Training
+  # =============================================================================
+  train-model:
+    name: Train and Validate Model
+    runs-on: ubuntu-latest
+    needs: [test, data-pipeline]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Download synthetic data
+      uses: actions/download-artifact@v3
+      with:
+        name: synthetic-data
+        path: data/raw/
+    
+    - name: Train model
+      run: |
+        echo "🤖 Training ICD-10 prediction model..."
+        python model/train_model.py
+      env:
+        MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+    
+    - name: Validate model performance
+      run: |
+        echo "📊 Validating model performance..."
+        python -c "
+        import pickle
+        import json
+        import os
+        
+        # Check if model files exist
+        model_path = 'model/saved_model'
+        assert os.path.exists(f'{model_path}/classifier.pkl'), 'Classifier not found'
+        assert os.path.exists(f'{model_path}/label_binarizer.pkl'), 'Label binarizer not found'
+        assert os.path.exists(f'{model_path}/config.json'), 'Config not found'
+        
+        # Load and validate model
+        with open(f'{model_path}/classifier.pkl', 'rb') as f:
+            classifier = pickle.load(f)
+        
+        with open(f'{model_path}/label_binarizer.pkl', 'rb') as f:
+            label_binarizer = pickle.load(f)
+        
+        # Basic model validation
+        assert hasattr(classifier, 'predict'), 'Model missing predict method'
+        assert len(label_binarizer.classes_) > 0, 'No classes in label binarizer'
+        
+        print(f'✅ Model validation passed! Classes: {len(label_binarizer.classes_)}')
+        "
+    
+    - name: Upload trained model
+      uses: actions/upload-artifact@v3
+      with:
+        name: trained-model
+        path: model/saved_model/
+
+  # =============================================================================
+  # Build and Push Docker Image
+  # =============================================================================
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, train-model]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download trained model
+      uses: actions/download-artifact@v3
+      with:
+        name: trained-model
+        path: model/saved_model/
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+    
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        echo "🐳 Building Docker image..."
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+        
+        echo "📤 Pushing to ECR..."
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+  # =============================================================================
+  # Deploy to AWS Lambda
+  # =============================================================================
+  deploy-lambda:
+    name: Deploy Lambda Function
+    runs-on: ubuntu-latest
+    needs: [test, train-model]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download trained model
+      uses: actions/download-artifact@v3
+      with:
+        name: trained-model
+        path: model/saved_model/
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Upload model to S3
+      run: |
+        echo "📤 Uploading model to S3..."
+        aws s3 cp model/saved_model/ s3://${{ secrets.S3_BUCKET }}/models/icd10-predictor/${{ github.sha }}/ --recursive
+        aws s3 cp model/saved_model/ s3://${{ secrets.S3_BUCKET }}/models/icd10-predictor/latest/ --recursive
+    
+    - name: Create Lambda deployment package
+      run: |
+        echo "📦 Creating Lambda deployment package..."
+        mkdir -p lambda-package
+        cp lambda_api/handler.py lambda-package/
+        cp -r model/saved_model lambda-package/
+        
+        # Install dependencies for Lambda
+        pip install -r requirements.txt -t lambda-package/ --no-deps
+        
+        # Create ZIP file
+        cd lambda-package
+        zip -r ../lambda-deployment.zip .
+        cd ..
+    
+    - name: Deploy Lambda function
+      run: |
+        echo "🚀 Deploying Lambda function..."
+        aws lambda update-function-code \
+          --function-name ${{ env.LAMBDA_FUNCTION }} \
+          --zip-file fileb://lambda-deployment.zip
+        
+        aws lambda update-function-configuration \
+          --function-name ${{ env.LAMBDA_FUNCTION }} \
+          --environment Variables="{
+            MODEL_BUCKET=${{ secrets.S3_BUCKET }},
+            MODEL_KEY=models/icd10-predictor/latest,
+            ENVIRONMENT=${{ github.event.inputs.environment || 'staging' }}
+          }"
+    
+    - name: Test Lambda function
+      run: |
+        echo "🧪 Testing Lambda function..."
+        aws lambda invoke \
+          --function-name ${{ env.LAMBDA_FUNCTION }} \
+          --payload '{"doctor_notes": "Patient presents with chest pain and shortness of breath."}' \
+          response.json
+        
+        cat response.json
+
+  # =============================================================================
+  # Deploy to ECS
+  # =============================================================================
+  deploy-ecs:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-lambda]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Download task definition
+      run: |
+        aws ecs describe-task-definition --task-definition icd10-predictor-task \
+          --query taskDefinition > task-definition.json
+    
+    - name: Update ECS service
+      run: |
+        echo "🚀 Updating ECS service..."
+        aws ecs update-service \
+          --cluster ${{ env.ECS_CLUSTER }} \
+          --service ${{ env.ECS_SERVICE }} \
+          --force-new-deployment
+
+  # =============================================================================
+  # Integration Testing
+  # =============================================================================
+  integration-test:
+    name: Integration Testing
+    runs-on: ubuntu-latest
+    needs: [deploy-lambda, deploy-ecs]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install requests pytest
+    
+    - name: Wait for deployment
+      run: |
+        echo "⏳ Waiting for deployment to complete..."
+        sleep 60
+    
+    - name: Test Lambda API
+      run: |
+        echo "🧪 Testing Lambda API..."
+        python -c "
+        import requests
+        import json
+        import time
+        
+        # Test Lambda function
+        lambda_url = '${{ secrets.LAMBDA_API_URL }}'
+        
+        test_data = {
+            'doctor_notes': 'Patient presents with chest pain and shortness of breath for the past 2 days.',
+            'patient_age': 65,
+            'confidence_threshold': 0.5
+        }
+        
+        response = requests.post(f'{lambda_url}/predict', json=test_data)
+        assert response.status_code == 200, f'Lambda API failed: {response.text}'
+        
+        result = response.json()
+        assert 'predicted_codes' in result, 'Missing predicted_codes in response'
+        assert 'confidence_scores' in result, 'Missing confidence_scores in response'
+        
+        print(f'✅ Lambda API test passed! Predicted codes: {result[\"predicted_codes\"]}')
+        "
+    
+    - name: Test ECS API
+      run: |
+        echo "🧪 Testing ECS API..."
+        python -c "
+        import requests
+        import json
+        
+        # Test ECS service
+        ecs_url = '${{ secrets.ECS_API_URL }}'
+        
+        test_data = {
+            'doctor_notes': 'Patient presents with chest pain and shortness of breath for the past 2 days.',
+            'patient_age': 65,
+            'confidence_threshold': 0.5
+        }
+        
+        response = requests.post(f'{ecs_url}/predict', json=test_data)
+        assert response.status_code == 200, f'ECS API failed: {response.text}'
+        
+        result = response.json()
+        assert 'predicted_codes' in result, 'Missing predicted_codes in response'
+        assert 'confidence_scores' in result, 'Missing confidence_scores in response'
+        
+        print(f'✅ ECS API test passed! Predicted codes: {result[\"predicted_codes\"]}')
+        "
+
+  # =============================================================================
+  # Performance Testing
+  # =============================================================================
+  performance-test:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    needs: [integration-test]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install locust requests
+    
+    - name: Run load test
+      run: |
+        echo "📊 Running performance tests..."
+        locust -f tests/load_test.py --host=${{ secrets.ECS_API_URL }} --users=10 --spawn-rate=2 --run-time=60s --headless
+
+  # =============================================================================
+  # Security Scan
+  # =============================================================================
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [integration-test]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ needs.build-and-push.outputs.image }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  # =============================================================================
+  # Notification
+  # =============================================================================
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [integration-test, performance-test, security-scan]
+    if: always()
+    
+    steps:
+    - name: Notify Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#mlops-deployments'
+        text: |
+          ICD-10 Prediction Pipeline Deployment
+          Environment: ${{ github.event.inputs.environment || 'staging' }}
+          Status: ${{ job.status }}
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Create deployment summary
+      run: |
+        echo "📋 Creating deployment summary..."
+        cat << EOF > deployment-summary.md
+        # ICD-10 Prediction Pipeline Deployment
+        
+        **Environment:** ${{ github.event.inputs.environment || 'staging' }}
+        **Status:** ${{ job.status }}
+        **Commit:** ${{ github.sha }}
+        **Branch:** ${{ github.ref }}
+        **Timestamp:** $(date)
+        
+        ## Components Deployed
+        - ✅ Lambda Function: ${{ env.LAMBDA_FUNCTION }}
+        - ✅ ECS Service: ${{ env.ECS_SERVICE }}
+        - ✅ Docker Image: ${{ needs.build-and-push.outputs.image }}
+        - ✅ Model Version: ${{ github.sha }}
+        
+        ## Test Results
+        - Unit Tests: ${{ needs.test.result }}
+        - Integration Tests: ${{ needs.integration-test.result }}
+        - Performance Tests: ${{ needs.performance-test.result }}
+        - Security Scan: ${{ needs.security-scan.result }}
+        
+        ## Access URLs
+        - Lambda API: ${{ secrets.LAMBDA_API_URL }}
+        - ECS API: ${{ secrets.ECS_API_URL }}
+        - MLflow UI: ${{ secrets.MLFLOW_UI_URL }}
+        EOF
+    
+    - name: Upload deployment summary
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-summary
+        path: deployment-summary.md 
