@@ -67,32 +67,35 @@ def test_streamlit_features():
         
         # Step 3: Create engineered features
         print("🔧 Creating engineered features...")
-        engineered_features = np.zeros(6)
+        engineered_features = np.zeros(7)  # 7 features to match training
         
         # Age (normalized) - using default 50
         engineered_features[0] = (50 - 50) / 20  # = 0
         
-        # Text length
-        engineered_features[5] = (len(cleaned_text) - 200) / 100
+        # Text length (normalized)
+        engineered_features[1] = (len(cleaned_text) - 200) / 100
         
         # Simple feature extraction
         text_lower = cleaned_text.lower()
         
         # Symptoms count
-        symptoms = ['pain', 'discomfort', 'pressure', 'burning', 'nausea', 'dizziness']
-        engineered_features[1] = sum(1 for symptom in symptoms if symptom in text_lower)
+        symptoms = ['pain', 'discomfort', 'pressure', 'burning', 'nausea', 'dizziness', 'fatigue', 'weakness']
+        engineered_features[2] = sum(1 for symptom in symptoms if symptom in text_lower)
         
         # Body parts count
-        body_parts = ['chest', 'abdomen', 'head', 'back', 'legs', 'arms', 'neck']
-        engineered_features[2] = sum(1 for part in body_parts if part in text_lower)
+        body_parts = ['chest', 'abdomen', 'head', 'back', 'legs', 'arms', 'neck', 'shoulder', 'knee', 'hip', 'throat', 'stomach']
+        engineered_features[3] = sum(1 for part in body_parts if part in text_lower)
         
         # Severity indicators
-        severity_words = ['severe', 'acute', 'chronic', 'mild', 'moderate']
-        engineered_features[3] = sum(1 for word in severity_words if word in text_lower)
+        severity_words = ['severe', 'acute', 'chronic', 'mild', 'moderate', 'intermittent', 'persistent']
+        engineered_features[4] = sum(1 for word in severity_words if word in text_lower)
         
         # Medical terms count
-        medical_terms = ['diagnosis', 'treatment', 'symptoms', 'examination', 'test']
-        engineered_features[4] = sum(1 for term in medical_terms if term in text_lower)
+        medical_terms = ['diagnosis', 'treatment', 'symptoms', 'examination', 'test', 'condition', 'medication']
+        engineered_features[5] = sum(1 for term in medical_terms if term in text_lower)
+        
+        # Gender (default to 0 for female)
+        engineered_features[6] = 0
         
         print(f"✅ Engineered features shape: {engineered_features.shape}")
         print(f"📊 Engineered features: {engineered_features}")

@@ -51,26 +51,40 @@ medical-coding-mlops/
    python data_gen.py
    ```
 
-3. **Run Data Validation (Databricks)**
+3. **Preprocess Data (PySpark)**
+   ```bash
+   spark-submit glue_jobs/preprocessing_local.py
+   ```
+
+4. **Split Data (PySpark)**
+   ```bash
+   spark-submit model/split_data.py
+   ```
+
+5. **Run Data Validation (Databricks)**
    ```sql
    -- Execute databricks/validation.sql
    ```
 
-4. **Train Model**
+6. **Train Model**
    ```bash
    python model/train_model.py
    ```
 
-5. **Deploy Model**
+7. **Deploy Model**
    ```bash
    # Build and deploy Docker image
    docker build -t icd10-predictor .
    ```
 
-6. **Start Frontend**
+8. **Start Frontend**
    ```bash
    streamlit run app/streamlit_app.py
    ```
+
+---
+
+**Note:** For any scripts that use PySpark (such as preprocessing or splitting), always use `spark-submit` instead of `python` to ensure proper Spark context and dependencies.
 
 ## 💰 Cost Estimation
 

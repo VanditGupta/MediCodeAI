@@ -1,7 +1,7 @@
 # Dockerfile for ICD-10 Prediction Model
 # HIPAA-Aware Container for Production Deployment
 
-FROM python:3.9-slim
+FROM python:3.11-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

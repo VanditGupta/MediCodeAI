@@ -19,7 +19,7 @@ from typing import Dict, List, Any, Optional
 import base64
 
 # Add model directory to path
-sys.path.append('/opt/python/lib/python3.9/site-packages')
+sys.path.append('/opt/python/lib/python3.11/site-packages')
 
 import torch
 from transformers import AutoTokenizer, AutoModel

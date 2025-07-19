@@ -1,5 +1,13 @@
 -- Databricks SQL Script for EHR Data Validation and Cleaning
 -- HIPAA-Aware Data Quality Checks for ICD-10 Prediction Pipeline
+--
+-- AWS AUTHENTICATION SETUP:
+-- This script assumes one of the following authentication methods is configured:
+-- 1. Instance Profile: Databricks cluster has IAM role attached (most common)
+-- 2. Unity Catalog Storage Credentials: Centralized credential management
+-- 3. Workspace IAM Role: Databricks workspace configured with AWS role
+--
+-- For production environments, use Unity Catalog storage credentials (Option A below)
 
 -- =============================================================================
 -- STEP 1: Load raw data and create initial table
@@ -11,14 +19,61 @@ CREATE DATABASE IF NOT EXISTS hipaa_mlops;
 -- Use the database
 USE hipaa_mlops;
 
--- Create raw data table from CSV
+-- =============================================================================
+-- STEP 1.1: Set up Storage Credentials (Run this once to configure AWS access)
+-- =============================================================================
+
+-- Option A: If using Unity Catalog storage credentials (recommended)
+-- CREATE STORAGE CREDENTIAL IF NOT EXISTS aws_credential
+-- USING AWS IAM ROLE 'arn:aws:iam::YOUR_ACCOUNT_ID:role/YOUR_DATABRICKS_ROLE';
+
+-- Option B: If using AWS access keys (less secure, not recommended for production)
+-- CREATE STORAGE CREDENTIAL IF NOT EXISTS aws_credential
+-- USING AWS ACCESS KEYS (
+--   ACCESS_KEY_ID = 'YOUR_ACCESS_KEY',
+--   SECRET_ACCESS_KEY = 'YOUR_SECRET_KEY'
+-- );
+
+-- Create external location for your S3 bucket
+-- CREATE EXTERNAL LOCATION IF NOT EXISTS s3_hipaa_data
+-- URL 's3://your-bucket/hipaa_mlops/'
+-- WITH (STORAGE CREDENTIAL aws_credential);
+
+-- =============================================================================
+-- STEP 1.2: Create raw data table from CSV using Unity Catalog
+-- =============================================================================
+
+-- Option 1: Using external location (recommended for Unity Catalog)
+-- CREATE TABLE IF NOT EXISTS raw_ehr_data
+-- USING CSV
+-- LOCATION 's3://your-bucket/hipaa_mlops/raw_data/synthetic_ehr_data.csv'
+-- OPTIONS (
+--   header "true",
+--   inferSchema "true"
+-- );
+
+-- Option 2: Direct S3 path (uses instance profile or workspace IAM role)
 CREATE TABLE IF NOT EXISTS raw_ehr_data
 USING CSV
 OPTIONS (
-  path "s3://your-hipaa-bucket/data/raw/synthetic_ehr_data.csv",
+  path "s3://your-bucket/hipaa_mlops/raw_data/synthetic_ehr_data.csv",
   header "true",
   inferSchema "true"
 );
+
+-- Option 2: Use Unity Catalog volume with proper scheme
+-- CREATE TABLE IF NOT EXISTS raw_ehr_data
+-- USING CSV
+-- OPTIONS (
+--   path "s3://your-bucket/volumes/hipaa_mlops/raw_data/synthetic_ehr_data.csv",
+--   header "true",
+--   inferSchema "true"
+-- );
+
+-- Option 3: If you need to use DBFS, create a temporary view instead
+-- CREATE OR REPLACE TEMPORARY VIEW raw_ehr_data AS
+-- SELECT * FROM CSV.`dbfs:/Workspace/Users/gupta.vandi@northeastern.edu/CMX_RAW_DATA/synthetic_ehr_data.csv`
+-- OPTIONS (header "true", inferSchema "true");
 
 -- =============================================================================
 -- STEP 2: Data Quality Validation
@@ -167,13 +222,9 @@ FROM cleaned_ehr_data_final;
 -- STEP 6: Export Cleaned Data
 -- =============================================================================
 
--- Write cleaned data to S3 as Parquet (encrypted)
-INSERT OVERWRITE DIRECTORY 's3://your-hipaa-bucket/data/cleaned/'
-USING PARQUET
-OPTIONS (
-  compression 'snappy',
-  encryption 'AES_GCM_V1'
-)
+-- Export cleaned data using Unity Catalog compatible approaches
+-- Option 1: Write to Unity Catalog table (recommended)
+CREATE OR REPLACE TABLE hipaa_mlops.cleaned_ehr_export AS
 SELECT 
   patient_id,
   age,
@@ -187,6 +238,24 @@ SELECT
   processed_at,
   processing_pipeline
 FROM cleaned_ehr_data_final;
+
+-- Option 2: Write to volume with proper cloud scheme (if you need file-based export)
+-- INSERT OVERWRITE DIRECTORY 's3://your-bucket/hipaa_mlops/cleaned_data/'
+-- USING PARQUET
+-- OPTIONS (compression 'snappy')
+-- SELECT 
+--   patient_id,
+--   age,
+--   gender,
+--   doctor_notes,
+--   diagnosis_date,
+--   icd10_codes,
+--   valid_codes,
+--   note_length,
+--   num_icd10_codes,
+--   processed_at,
+--   processing_pipeline
+-- FROM cleaned_ehr_data_final;
 
 -- =============================================================================
 -- STEP 7: Create Summary Views for Monitoring
