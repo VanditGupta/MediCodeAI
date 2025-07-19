@@ -13,7 +13,7 @@ def test_prediction():
     print("🧪 Testing prediction with saved model...")
     
     # Load model components
-    model_path = "model/saved_model"
+    model_path = "../model/saved_model"
     
     try:
         # Load classifier

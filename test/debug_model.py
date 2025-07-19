@@ -15,7 +15,7 @@ def debug_model():
     print("🔍 Debugging trained model structure...")
     
     # Load model components
-    model_path = "model/saved_model"
+    model_path = "../model/saved_model"
     
     # Load classifier
     with open(f"{model_path}/classifier.pkl", "rb") as f:
@@ -38,8 +38,8 @@ def debug_model():
     # Test with sample features
     print("\n🧪 Testing with sample features...")
     
-    # Create sample features (774 dimensions as expected)
-    sample_features = np.random.random(774).reshape(1, -1)
+    # Create sample features (775 dimensions as expected)
+    sample_features = np.random.random(775).reshape(1, -1)
     print(f"📊 Sample features shape: {sample_features.shape}")
     
     # Test different prediction methods

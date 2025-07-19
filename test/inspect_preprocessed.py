@@ -16,7 +16,7 @@ def inspect_preprocessed_data():
     spark = SparkSession.builder.appName("InspectData").getOrCreate()
     
     # Load the preprocessed features
-    features_df = spark.read.parquet("data/preprocessed/features/")
+    features_df = spark.read.parquet("../data/preprocessed/features/")
     
     print(f"📊 Total records: {features_df.count()}")
     print(f"📋 Columns: {features_df.columns}")
@@ -66,7 +66,7 @@ def inspect_preprocessed_data():
     print()
     
     # Load ICD-10 mapping
-    with open("data/preprocessed/icd10_mapping.json", "r") as f:
+    with open("../data/preprocessed/icd10_mapping.json", "r") as f:
         icd10_mapping = json.load(f)
     
     print(f"📋 ICD-10 Mapping: {len(icd10_mapping)} unique codes")
@@ -77,8 +77,8 @@ def inspect_preprocessed_data():
     
     # File size comparison
     import os
-    parquet_size = os.path.getsize("data/preprocessed/features/part-00000-02da0bb5-8f44-49cc-85cf-1ba462ffc1ac-c000.snappy.parquet")
-    raw_csv_size = os.path.getsize("data/raw/synthetic_ehr_data.csv")
+    parquet_size = os.path.getsize("../data/preprocessed/features/part-00000-02da0bb5-8f44-49cc-85cf-1ba462ffc1ac-c000.snappy.parquet")
+    raw_csv_size = os.path.getsize("../data/raw/synthetic_ehr_data.csv")
     
     print("💾 File Size Comparison:")
     print(f"  Raw CSV: {raw_csv_size:,} bytes")

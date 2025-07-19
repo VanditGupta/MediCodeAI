@@ -15,7 +15,7 @@ def test_streamlit_features():
     print("🧪 Testing Streamlit feature creation process...")
     
     # Load model components
-    model_path = "model/saved_model"
+    model_path = "../model/saved_model"
     
     try:
         # Load tokenizer and BERT model
