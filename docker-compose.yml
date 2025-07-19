@@ -1,27 +1,25 @@
-version: "3.11"
-
 services:
   streamlit:
     build:
       context: .
-      dockerfile: docker/streamlit.Dockerfile
+      dockerfile: docker/Dockerfile
     ports:
-      - "8501:8501"
-    volumes:
-      - ./model/saved_model:/app/model/saved_model:ro
-      - ./app:/app/app:ro
+      - "8502:8501"  # Streamlit (mapped to 8502 to avoid conflicts)
     environment:
       - PYTHONUNBUFFERED=1
-    depends_on:
-      - mlflow
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.11.3
     ports:
-      - "5000:5000"
+      - "5001:5000"  # MLflow (mapped to 5001 to avoid macOS conflict)
     environment:
       - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
     command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --default-artifact-root ./mlruns
-    volumes:
-      - ./mlruns:/mlruns
-      - ./mlflow.db:/mlflow.db 
+    restart: unless-stopped 

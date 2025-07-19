@@ -6,6 +6,7 @@ xgboost>=2.0.0,<3.0.0
 transformers>=4.30.0,<5.0.0
 torch>=2.0.0,<3.0.0
 tokenizers>=0.13.0,<1.0.0
+shap>=0.42.0,<1.0.0
 
 # AWS Services (for local testing, we'll mock these)
 boto3>=1.26.0,<2.0.0

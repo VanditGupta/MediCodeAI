@@ -1,0 +1,67 @@
+# Training scripts (should be run locally)
+model/train_model.py
+model/split_data.py
+model/download_bert.py
+
+# Data generation (should be run locally)
+data_gen.py
+run_pipeline.py
+
+# Development files
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs
+logs/
+*.log
+
+# MLflow local files (will be mounted as volume)
+mlruns/
+mlflow.db
+
+# Test files
+test/
+tests/
+*.test.py
+
+# Documentation
+*.md
+docs/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Temporary files
+tmp/
+temp/
+*.tmp 
