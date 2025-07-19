@@ -95,6 +95,7 @@ model_cache/
 logs/
 *.log
 mlflow_server/
+mlartifacts/
 
 # AWS
 .aws/

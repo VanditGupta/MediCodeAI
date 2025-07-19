@@ -104,4 +104,8 @@ def split_preprocessed_data():
     print(f"\n🎉 Data splitting completed successfully in {time.time() - start_time:.1f} seconds!", flush=True)
 
 if __name__ == "__main__":
-    split_preprocessed_data() 
+    try:
+        split_preprocessed_data()
+    except Exception as e:
+        print(f"❌ Data splitting failed: {str(e)}")
+        raise 

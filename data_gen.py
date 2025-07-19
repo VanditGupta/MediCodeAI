@@ -328,7 +328,7 @@ def generate_realistic_medical_note(icd10_codes: List[str], conditions: List[str
     
     return full_note
 
-def generate_patient_data(num_records: int = 50000) -> pd.DataFrame:
+def generate_patient_data(num_records: int = 5000) -> pd.DataFrame:
     """Generate synthetic patient data with realistic medical notes and ICD-10 codes."""
     
     data = []
@@ -424,7 +424,7 @@ def main():
     print("=" * 70)
     
     # Generate data
-    df = generate_patient_data(num_records=50000)
+    df = generate_patient_data(num_records=5000)
     
     # Save to data/raw directory
     output_path = "data/raw/synthetic_ehr_data.csv"

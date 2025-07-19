@@ -141,5 +141,11 @@ def process_ehr_data():
         json.dump(icd10_mapping, f, indent=2)
 
 if __name__ == "__main__":
-    process_ehr_data()
-    spark.stop() 
+    try:
+        process_ehr_data()
+        print("✅ Preprocessing completed successfully!")
+    except Exception as e:
+        print(f"❌ Preprocessing failed: {str(e)}")
+        raise
+    finally:
+        spark.stop() 

@@ -31,7 +31,8 @@ import threading
 
 # ML and NLP libraries
 import torch
-from transformers import AutoTokenizer, AutoModel, AdamW
+from transformers import AutoTokenizer, AutoModel
+from torch.optim import AdamW
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, multilabel_confusion_matrix
 from sklearn.preprocessing import MultiLabelBinarizer
@@ -40,68 +41,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
 # PRODUCTION: Additional imports for hyperparameter optimization
-# from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedKFold
-# from sklearn.model_selection import cross_val_score, cross_validate
-# from scipy.stats import uniform, randint
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, StratifiedKFold, KFold
+from sklearn.model_selection import cross_val_score, cross_validate
+from scipy.stats import uniform, randint
 # from optuna import create_study, Trial
 # import optuna
 
-class LocalMLflowTracker:
-    """Simple local tracker that saves logs to files instead of MLflow server."""
-    
-    def __init__(self, log_dir: str = "logs"):
-        self.log_dir = log_dir
-        os.makedirs(log_dir, exist_ok=True)
-        self.run_id = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.run_dir = os.path.join(log_dir, f"run_{self.run_id}")
-        os.makedirs(self.run_dir, exist_ok=True)
-        
-        self.params = {}
-        self.metrics = {}
-        self.artifacts = []
-        
-        print(f"📝 Local tracking initialized: {self.run_dir}")
-    
-    def start_run(self, run_name=None, tags=None):
-        """Start a new run (context manager)."""
-        return self
-    
-    def __enter__(self):
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.save_run()
-    
-    def log_params(self, params: Dict[str, Any]):
-        """Log parameters locally."""
-        self.params.update(params)
-        print(f"📊 Logged {len(params)} parameters")
-    
-    def log_metrics(self, metrics: Dict[str, float]):
-        """Log metrics locally."""
-        self.metrics.update(metrics)
-        print(f"📈 Logged {len(metrics)} metrics")
-    
-    def log_artifact(self, local_path: str, artifact_path: str = None):
-        """Log artifact locally."""
-        self.artifacts.append((local_path, artifact_path))
-        print(f"📦 Logged artifact: {local_path}")
-    
-    def save_run(self):
-        """Save all run data to files."""
-        # Save parameters
-        with open(os.path.join(self.run_dir, "params.json"), "w") as f:
-            json.dump(self.params, f, indent=2)
-        
-        # Save metrics
-        with open(os.path.join(self.run_dir, "metrics.json"), "w") as f:
-            json.dump(self.metrics, f, indent=2)
-        
-        # Save artifacts list
-        with open(os.path.join(self.run_dir, "artifacts.json"), "w") as f:
-            json.dump(self.artifacts, f, indent=2)
-        
-        print(f"💾 Run data saved to: {self.run_dir}")
+# MLflow tracking
+import mlflow
+import mlflow.sklearn
 
 class ICD10Predictor:
     """Main class for ICD-10 code prediction model training."""
@@ -109,8 +57,19 @@ class ICD10Predictor:
     def __init__(self, config: Dict[str, Any]):
         """Initialize the model trainer."""
         self.config = config
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.mlflow_tracker = LocalMLflowTracker()
+        # Use M1 GPU (MPS) if available, otherwise CPU
+        if torch.backends.mps.is_available():
+            self.device = torch.device('mps')
+            print("🚀 Using M1 GPU (MPS) for training")
+        elif torch.cuda.is_available():
+            self.device = torch.device('cuda')
+            print("🚀 Using CUDA GPU for training")
+        else:
+            self.device = torch.device('cpu')
+            print("💻 Using CPU for training")
+        
+        # Set up MLflow tracking
+        mlflow.set_tracking_uri("http://localhost:5001")
         
         # Model components
         self.tokenizer = None
@@ -125,6 +84,7 @@ class ICD10Predictor:
         
         print(f"🚀 Initializing ICD-10 Predictor on {self.device}")
         print(f"📊 Configuration: {json.dumps(config, indent=2)}")
+        print(f"📝 MLflow tracking enabled at: http://localhost:5001")
     
     def load_data(self, data_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """Load preprocessed data from local path."""
@@ -693,6 +653,47 @@ class ICD10Predictor:
         
         return metrics
     
+    def perform_cross_validation(self, X: np.ndarray, y: np.ndarray, n_splits: int = 5) -> Dict[str, float]:
+        """Perform K-Fold cross-validation on the dataset."""
+        print(f"🔄 Performing {n_splits}-fold cross-validation...")
+        start_time = time.time()
+        
+        # Initialize cross-validation (use KFold for multi-label data)
+        cv = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+        
+        # Perform cross-validation for each metric
+        cv_scores = {}
+        
+        # Accuracy
+        accuracy_scores = cross_val_score(self.classifier, X, y, cv=cv, scoring='accuracy')
+        cv_scores['cv_accuracy_mean'] = accuracy_scores.mean()
+        cv_scores['cv_accuracy_std'] = accuracy_scores.std()
+        
+        # F1 Score (micro-averaged)
+        f1_scores = cross_val_score(self.classifier, X, y, cv=cv, scoring='f1_micro')
+        cv_scores['cv_f1_mean'] = f1_scores.mean()
+        cv_scores['cv_f1_std'] = f1_scores.std()
+        
+        # Precision (micro-averaged)
+        precision_scores = cross_val_score(self.classifier, X, y, cv=cv, scoring='precision_micro')
+        cv_scores['cv_precision_mean'] = precision_scores.mean()
+        cv_scores['cv_precision_std'] = precision_scores.std()
+        
+        # Recall (micro-averaged)
+        recall_scores = cross_val_score(self.classifier, X, y, cv=cv, scoring='recall_micro')
+        cv_scores['cv_recall_mean'] = recall_scores.mean()
+        cv_scores['cv_recall_std'] = recall_scores.std()
+        
+        cv_time = time.time() - start_time
+        print(f"✅ Cross-validation completed in {cv_time:.2f} seconds")
+        print(f"📊 Cross-validation Results:")
+        print(f"   Accuracy: {cv_scores['cv_accuracy_mean']:.4f} ± {cv_scores['cv_accuracy_std']:.4f}")
+        print(f"   F1 Score: {cv_scores['cv_f1_mean']:.4f} ± {cv_scores['cv_f1_std']:.4f}")
+        print(f"   Precision: {cv_scores['cv_precision_mean']:.4f} ± {cv_scores['cv_precision_std']:.4f}")
+        print(f"   Recall: {cv_scores['cv_recall_mean']:.4f} ± {cv_scores['cv_recall_std']:.4f}")
+        
+        return cv_scores
+    
     def save_model(self, model_path: str):
         """Save the trained model and components."""
         print(f"💾 Saving model to {model_path}")
@@ -738,11 +739,13 @@ class ICD10Predictor:
         total_start_time = time.time()
         
         try:
-            # Start local tracking run
-            with self.mlflow_tracker.start_run() as run:
+            # Start MLflow run
+            mlflow.set_experiment("MediCodeAI_Training")
+            with mlflow.start_run() as run:
                 # Log parameters
                 print("📊 Logging training parameters...")
-                self.mlflow_tracker.log_params(self.config)
+                for key, value in self.config.items():
+                    mlflow.log_param(key, value)
                 
                 # Load data
                 train_df, val_df, test_df = self.load_data(data_path)
@@ -773,44 +776,50 @@ class ICD10Predictor:
                 print("🔧 Creating ensemble features for test set...")
                 X_test = self.create_ensemble_features(test_df, test_bert_features)
                 
-                # PRODUCTION: Uncomment to enable cross-validation on full dataset
-                """
-                # Perform cross-validation on full dataset
-                print("🔄 Performing cross-validation on full dataset...")
+                # Train classifier first
+                self.train_classifier(X_train, train_labels, X_val, val_labels)
+                
+                # Perform cross-validation on a sample for faster execution
+                print("🔄 Performing cross-validation on sample dataset...")
                 full_X = np.vstack([X_train, X_val])
                 full_y = np.vstack([train_labels, val_labels])
-                cv_metrics = self.perform_cross_validation(full_X, full_y, n_splits=5)
-                """
                 
-                # Train classifier
-                self.train_classifier(X_train, train_labels, X_val, val_labels)
+                # Use smaller sample for faster CV
+                sample_size = min(500, len(full_X))
+                sample_indices = np.random.choice(len(full_X), sample_size, replace=False)
+                sample_X = full_X[sample_indices]
+                sample_y = full_y[sample_indices]
+                
+                print(f"📊 Using {sample_size} samples for CV (out of {len(full_X)} total)")
+                cv_metrics = self.perform_cross_validation(sample_X, sample_y, n_splits=2)
+                
+                # Log cross-validation metrics
+                print("📈 Logging cross-validation metrics...")
+                for key, value in cv_metrics.items():
+                    mlflow.log_metric(key, value)
                 
                 # Evaluate model
                 metrics = self.evaluate_model(X_test, test_labels, test_df)
                 
-                # Log metrics
+                # Log final metrics
                 print("📈 Logging final metrics...")
-                self.mlflow_tracker.log_metrics(metrics)
+                for key, value in metrics.items():
+                    mlflow.log_metric(key, value)
                 
                 # Save model
                 self.save_model(model_path)
                 
                 # Log model artifacts
-                self.mlflow_tracker.log_artifact(model_path, "model")
+                mlflow.log_artifact(model_path, "model")
+                
+                # Note: Skipping mlflow.sklearn.log_model due to API compatibility
+                print("📝 Model artifacts logged to MLflow")
                 
                 total_time = time.time() - total_start_time
                 print("=" * 60)
                 print(f"✅ Training completed successfully in {total_time:.2f} seconds!")
                 print(f"🎉 Total training time: {total_time/60:.2f} minutes")
-                
-                # PRODUCTION: Add hyperparameter optimization time estimate
-                """
-                print("💡 PRODUCTION NOTE:")
-                print("   - Grid Search would add ~2-4 hours")
-                print("   - Cross-validation would add ~30-60 minutes")
-                print("   - Bayesian optimization would add ~1-2 hours")
-                print("   - Total production training: ~4-7 hours")
-                """
+                print(f"📊 View results at: http://localhost:5001")
                 
                 return metrics
                 
@@ -821,7 +830,7 @@ class ICD10Predictor:
 def main():
     """Main training function."""
     
-    # Configuration
+    # Enhanced configuration with MLflow tracking
     config = {
         'bert_model': 'emilyalsentzer/Bio_ClinicalBERT',
         'classifier': 'xgboost',
@@ -829,43 +838,33 @@ def main():
         'batch_size': 16,
         'learning_rate': 0.1,
         'n_estimators': 100,
-        'random_state': 42
-    }
-    
-    # PRODUCTION: Enhanced configuration with hyperparameter search options
-    """
-    production_config = {
-        'bert_model': 'emilyalsentzer/Bio_ClinicalBERT',
-        'classifier': 'xgboost',
-        'max_length': 512,
-        'batch_size': 16,
         'random_state': 42,
-        
-        # Hyperparameter search settings
-        'enable_grid_search': True,
-        'enable_cross_validation': True,
-        'enable_bayesian_optimization': False,
-        'n_cv_folds': 5,
-        'n_trials': 50,
-        
-        # Grid search parameter ranges
-        'learning_rate_range': [0.01, 0.05, 0.1, 0.2],
-        'n_estimators_range': [50, 100, 200],
-        'max_depth_range': [4, 6, 8],
-        'subsample_range': [0.7, 0.8, 0.9],
-        'colsample_bytree_range': [0.7, 0.8, 0.9]
+        'cv_folds': 3,
+        'dataset_size': '5,000 records',
+        'model_type': 'ClinicalBERT + XGBoost Ensemble'
     }
-    """
     
     # Paths
     data_path = "data/preprocessed"  # Local path
     model_path = "model/saved_model"
     
+    print("🚀 Starting MediCodeAI Training with MLflow Tracking")
+    print("=" * 60)
+    print(f"📊 Configuration: {config}")
+    print(f"📝 MLflow UI: http://localhost:5001")
+    print(f"📁 Data path: {data_path}")
+    print(f"💾 Model path: {model_path}")
+    print("=" * 60)
+    
     # Initialize and train
     trainer = ICD10Predictor(config)
     metrics = trainer.train(data_path, model_path)
     
-    print(f"🎉 Training completed with metrics: {metrics}")
+    print("=" * 60)
+    print(f"🎉 Training completed successfully!")
+    print(f"📊 Final metrics: {metrics}")
+    print(f"📈 View detailed results at: http://localhost:5001")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main() 
