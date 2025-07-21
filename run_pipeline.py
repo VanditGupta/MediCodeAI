@@ -65,12 +65,6 @@ def check_prerequisites():
         print("❌ Spark not found. Please install Apache Spark")
         return False
     
-    # Check MLflow server
-    if not run_command("curl -s http://localhost:5001 > /dev/null", "Checking MLflow server", check=False):
-        print("⚠️ MLflow server not running. Starting MLflow...")
-        run_command("mlflow ui --port 5001", "Starting MLflow server", check=False)
-        time.sleep(3)  # Wait for server to start
-    
     print("✅ All prerequisites checked")
     return True
 
@@ -105,13 +99,6 @@ def main():
         print("❌ Data splitting failed")
         return False
     
-    # Step 4: Train model with MLflow tracking (LIVE OUTPUT)
-    print("\n🤖 STEP 4: Training Model with MLflow Tracking")
-    print("📺 You will see live training progress below:")
-    if not run_command("python model/train_model.py", "Model Training", capture_output=False):
-        print("❌ Model training failed")
-        return False
-    
     # Final summary
     print("\n" + "="*60)
     print("🎉 PIPELINE COMPLETED SUCCESSFULLY!")
@@ -119,9 +106,7 @@ def main():
     print(f"📊 Generated: 5,000 synthetic EHR records")
     print(f"🔧 Preprocessed: Data with PySpark")
     print(f"✂️ Split: Train/Validation/Test sets")
-    print(f"🤖 Trained: ClinicalBERT + XGBoost model")
-    print(f"📝 Tracked: All experiments in MLflow")
-    print(f"📈 View results: http://localhost:5001")
+    print(f"📝 You can now run model training separately if desired.")
     print(f"🕐 Completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
