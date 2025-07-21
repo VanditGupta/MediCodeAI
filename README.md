@@ -74,13 +74,20 @@ medical-coding-mlops/
 7. **Deploy Model**
    ```bash
    # Build and deploy Docker image
-   docker build -t icd10-predictor .
+   ./docker/build.sh
    ```
 
-8. **Start Frontend**
+8. **Start Frontend (Local Only)**
    ```bash
    streamlit run app/streamlit_app.py
    ```
+
+9. **Run with Docker Compose (Recommended for Full Stack)**
+   ```bash
+   docker-compose up
+   ```
+   - Streamlit UI: http://localhost:8502 (host port 8502 → container 8501)
+   - MLflow UI: http://localhost:5001 (host port 5001 → container 5000)
 
 ---
 

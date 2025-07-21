@@ -7,6 +7,8 @@ services:
       - "8502:8501"  # Streamlit (mapped to 8502 to avoid conflicts)
     environment:
       - PYTHONUNBUFFERED=1
+      - HOME=/app
+      - MPLCONFIGDIR=/app/.config/matplotlib
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/health"]

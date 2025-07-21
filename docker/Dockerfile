@@ -65,6 +65,9 @@ RUN mkdir -p /app/model/saved_model \
     /app/mlruns \
     && chown -R appuser:appuser /app
 
+# Add this to fix matplotlib config permissions
+RUN mkdir -p /app/.config/matplotlib && chown -R appuser:appuser /app/.config/matplotlib
+
 # Switch to non-root user
 USER appuser
 
