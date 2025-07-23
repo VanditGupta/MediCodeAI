@@ -2,6 +2,17 @@
 
 A comprehensive MLOps pipeline for automated ICD-10 billing code prediction from clinical notes, demonstrating technical alignment with healthcare AI companies like CodaMetrix.
 
+## 🌐 Live Application
+
+**Hosted EC2 Instance**: [http://54.80.207.185:8501/](http://54.80.207.185:8501/)
+
+The application is currently hosted on AWS EC2 and accessible via the link above. This provides a live demonstration of the ICD-10 billing code prediction system.
+
+## Screenshot of the Live Application
+
+![Screenshot of the Live Application](./screenshots/app_screenshot.png)
+![Screenshot of Prediction Results](./screenshots/predictions_screenshot.png)
+
 ## 🏗️ Architecture Overview
 
 This project implements a production-ready MLOps pipeline using:
