@@ -8,6 +8,9 @@ torch>=2.0.0,<3.0.0
 tokenizers>=0.13.0,<1.0.0
 shap>=0.42.0,<1.0.0
 
+# DVC
+dvc>=3.0.0,<4.0.0
+
 # AWS Services (for local testing, we'll mock these)
 boto3>=1.26.0,<2.0.0
 pyspark>=3.4.0,<4.0.0

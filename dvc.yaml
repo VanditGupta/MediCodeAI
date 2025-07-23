@@ -1,0 +1,113 @@
+stages:
+  # Data Generation Stage
+  generate_data:
+    cmd: python3 data_gen.py
+    deps:
+      - data_gen.py
+      - requirements.txt
+    outs:
+      - data/raw/synthetic_ehr_data.csv:
+          persist: true
+      - data/raw/synthetic_ehr_data_metadata.json:
+          persist: true
+    metrics:
+      - data/raw/data_metrics.json:
+          persist: true
+    plots:
+      - data/raw/data_distribution.html:
+          persist: true
+
+  # Data Preprocessing Stage
+  preprocess_data:
+    cmd: spark-submit --master "local[*]" --driver-memory 4g --executor-memory 2g glue_jobs/preprocessing_local.py
+    deps:
+      - glue_jobs/preprocessing_local.py
+      - data/raw/synthetic_ehr_data.csv
+    outs:
+      - data/processed/cleaned_data.parquet:
+          persist: true
+      - data/processed/preprocessing_metadata.json:
+          persist: true
+    metrics:
+      - data/processed/preprocessing_metrics.json:
+          persist: true
+
+  # Data Splitting Stage
+  split_data:
+    cmd: spark-submit --master "local[*]" --driver-memory 4g --executor-memory 2g model/split_data.py
+    deps:
+      - model/split_data.py
+      - data/processed/cleaned_data.parquet
+    outs:
+      - data/train/train_data.parquet:
+          persist: true
+      - data/validation/validation_data.parquet:
+          persist: true
+      - data/test/test_data.parquet:
+          persist: true
+      - data/splits/split_metadata.json:
+          persist: true
+    metrics:
+      - data/splits/split_metrics.json:
+          persist: true
+
+  # Model Training Stage
+  train_model:
+    cmd: python3 model/train_model.py
+    deps:
+      - model/train_model.py
+      - data/train/train_data.parquet
+      - data/validation/validation_data.parquet
+      - model_cache/
+    outs:
+      - models/clinical_bert_model/:
+          persist: true
+      - models/xgboost_model.pkl:
+          persist: true
+      - models/model_metadata.json:
+          persist: true
+    metrics:
+      - models/training_metrics.json:
+          persist: true
+    plots:
+      - models/performance_plots.html:
+          persist: true
+
+  # Model Evaluation Stage
+  evaluate_model:
+    cmd: python3 model/evaluate_model.py
+    deps:
+      - model/evaluate_model.py
+      - data/test/test_data.parquet
+      - models/clinical_bert_model/
+      - models/xgboost_model.pkl
+    outs:
+      - artifacts/evaluation_results.json:
+          persist: true
+      - artifacts/confusion_matrix.png:
+          persist: true
+      - artifacts/roc_curves.png:
+          persist: true
+    metrics:
+      - artifacts/evaluation_metrics.json:
+          persist: true
+    plots:
+      - artifacts/evaluation_plots.html:
+          persist: true
+
+  # Model Packaging Stage
+  package_model:
+    cmd: python3 model/package_model.py
+    deps:
+      - model/package_model.py
+      - models/clinical_bert_model/
+      - models/xgboost_model.pkl
+      - models/model_metadata.json
+    outs:
+      - artifacts/model_package.tar.gz:
+          persist: true
+      - artifacts/model_requirements.txt:
+          persist: true
+    metrics:
+      - artifacts/package_metrics.json:
+          persist: true 

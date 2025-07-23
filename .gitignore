@@ -157,4 +157,5 @@ Thumbs.db
 !*.yaml
 !*.yml
 !*.json
-!.gitignore 
+!.gitignore
+!*.dvc 

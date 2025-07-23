@@ -409,11 +409,101 @@ def save_data_with_metadata(df: pd.DataFrame, output_path: str):
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
     
+    # Create metrics file for DVC
+    metrics = {
+        "data_generation": {
+            "total_records": int(len(df)),
+            "unique_icd10_codes": int(len(set(all_codes))),
+            "avg_codes_per_record": round(len(all_codes) / len(df), 2),
+            "data_quality_score": 1.0 if metadata['validation']['all_icd10_valid'] else 0.0,
+            "completeness_score": 1.0 if metadata['validation']['no_null_notes'] else 0.0
+        },
+        "demographics": {
+            "age_mean": float(df['age'].mean()),
+            "age_std": float(df['age'].std()),
+            "gender_balance": float(df['gender'].value_counts().min() / df['gender'].value_counts().max())
+        },
+        "icd10_distribution": {
+            "top_5_codes": code_counts.head(5).to_dict(),
+            "code_diversity": float(len(set(all_codes)) / len(all_codes))
+        }
+    }
+    
+    metrics_path = "data/raw/data_metrics.json"
+    with open(metrics_path, 'w') as f:
+        json.dump(metrics, f, indent=2)
+    
+    # Create plots file for DVC
+    create_data_distribution_plots(df, code_counts)
+    
     print(f"✅ Generated {len(df):,} synthetic EHR records")
     print(f"📁 Data saved to: {output_path}")
     print(f"📊 Metadata saved to: {metadata_path}")
+    print(f"📈 Metrics saved to: {metrics_path}")
+    print(f"📊 Plots saved to: data/raw/data_distribution.html")
     print(f"🔍 Validation: {metadata['validation']}")
     print(f"📈 Top 5 ICD-10 codes: {list(code_counts.head(5).items())}")
+
+def create_data_distribution_plots(df: pd.DataFrame, code_counts: pd.Series):
+    """Create interactive plots for data distribution."""
+    try:
+        import plotly.graph_objects as go
+        import plotly.express as px
+        from plotly.subplots import make_subplots
+        
+        # Create subplots
+        fig = make_subplots(
+            rows=2, cols=2,
+            subplot_titles=('Age Distribution', 'Gender Distribution', 
+                           'Top 10 ICD-10 Codes', 'Codes per Record'),
+            specs=[[{"type": "histogram"}, {"type": "pie"}],
+                   [{"type": "bar"}, {"type": "histogram"}]]
+        )
+        
+        # Age distribution
+        fig.add_trace(
+            go.Histogram(x=df['age'], name='Age Distribution', nbinsx=20),
+            row=1, col=1
+        )
+        
+        # Gender distribution
+        gender_counts = df['gender'].value_counts()
+        fig.add_trace(
+            go.Pie(labels=gender_counts.index, values=gender_counts.values, name='Gender'),
+            row=1, col=2
+        )
+        
+        # Top 10 ICD-10 codes
+        top_10_codes = code_counts.head(10)
+        fig.add_trace(
+            go.Bar(x=top_10_codes.index, y=top_10_codes.values, name='Top 10 Codes'),
+            row=2, col=1
+        )
+        
+        # Codes per record distribution
+        codes_per_record = [len(codes) for codes in df['icd10_codes_list']]
+        fig.add_trace(
+            go.Histogram(x=codes_per_record, name='Codes per Record', nbinsx=10),
+            row=2, col=2
+        )
+        
+        # Update layout
+        fig.update_layout(
+            height=800,
+            title_text="Synthetic EHR Data Distribution",
+            showlegend=False
+        )
+        
+        # Save as HTML
+        plots_path = "data/raw/data_distribution.html"
+        fig.write_html(plots_path)
+        
+    except ImportError:
+        # Fallback if plotly is not available
+        print("⚠️ Plotly not available, skipping plots generation")
+        plots_path = "data/raw/data_distribution.html"
+        with open(plots_path, 'w') as f:
+            f.write("<html><body><h1>Data Distribution Plots</h1><p>Plots not generated - plotly not available</p></body></html>")
 
 def main():
     """Main function to generate synthetic EHR data."""

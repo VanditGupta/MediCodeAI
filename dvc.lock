@@ -1,0 +1,93 @@
+schema: '2.0'
+stages:
+  generate_data:
+    cmd: python3 data_gen.py
+    deps:
+    - path: data_gen.py
+      hash: md5
+      md5: 52408fa4d9c1d906df35ecad7e785276
+      size: 21745
+    - path: requirements.txt
+      hash: md5
+      md5: db900ce602246bf27d216eb5f4495c79
+      size: 1357
+    outs:
+    - path: data/raw/data_distribution.html
+      hash: md5
+      md5: 5cb2f5bc6a9175738519dc85c95749f6
+      size: 4592957
+    - path: data/raw/data_metrics.json
+      hash: md5
+      md5: e94d3c08ceaa1da8548f303af09a18d8
+      size: 506
+    - path: data/raw/synthetic_ehr_data.csv
+      hash: md5
+      md5: c47893c69d7f3790dfb3d73203133cb1
+      size: 1769329
+    - path: data/raw/synthetic_ehr_data_metadata.json
+      hash: md5
+      md5: 83cfbf1f7188a708ab958b19efbf17d2
+      size: 691
+  preprocess_data:
+    cmd: spark-submit --master "local[*]" --driver-memory 4g --executor-memory 2g
+      glue_jobs/preprocessing_local.py
+    deps:
+    - path: data/raw/synthetic_ehr_data.csv
+      hash: md5
+      md5: c47893c69d7f3790dfb3d73203133cb1
+      size: 1769329
+    - path: glue_jobs/preprocessing_local.py
+      hash: md5
+      md5: bd99825db7572e0199a47502533d9185
+      size: 8264
+    outs:
+    - path: data/processed/cleaned_data.parquet
+      hash: md5
+      md5: 4fc619da1f7fe163716d0d9542822717.dir
+      size: 1152361
+      nfiles: 4
+    - path: data/processed/preprocessing_metadata.json
+      hash: md5
+      md5: b57285bab47c883de340a94dfc15896b
+      size: 540
+    - path: data/processed/preprocessing_metrics.json
+      hash: md5
+      md5: 8dc7b4121fbfe3c4da402db68d0cab03
+      size: 167
+  split_data:
+    cmd: spark-submit --master "local[*]" --driver-memory 4g --executor-memory 2g
+      model/split_data.py
+    deps:
+    - path: data/processed/cleaned_data.parquet
+      hash: md5
+      md5: 4fc619da1f7fe163716d0d9542822717.dir
+      size: 1152361
+      nfiles: 4
+    - path: model/split_data.py
+      hash: md5
+      md5: 8bd7d6cc6f7d76cc609fc72ca8faf568
+      size: 7204
+    outs:
+    - path: data/splits/split_metadata.json
+      hash: md5
+      md5: fee2b6e644cddfb417c7ee7f894db6a9
+      size: 256
+    - path: data/splits/split_metrics.json
+      hash: md5
+      md5: f2635c29d2e50bef6f0e2ab423915b3b
+      size: 216
+    - path: data/test/test_data.parquet
+      hash: md5
+      md5: c9588b7ad74638f753e173752996bae8.dir
+      size: 474927
+      nfiles: 22
+    - path: data/train/train_data.parquet
+      hash: md5
+      md5: 9ab2d17134e6e076c19624acfc0613ae.dir
+      size: 1171155
+      nfiles: 22
+    - path: data/validation/validation_data.parquet
+      hash: md5
+      md5: 895f387794b3d6bebd5f402710128de8.dir
+      size: 476901
+      nfiles: 22

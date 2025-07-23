@@ -1,0 +1,65 @@
+# DVC ignore file - specifies files to ignore in data versioning
+
+# Python cache and build files
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+codametrix_env/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+logs/
+
+# MLflow artifacts (handled separately)
+mlruns/
+mlflow.db
+
+# Docker files (not data)
+docker/
+
+# Git files
+.git/
+
+# Environment files
+.env
+.env.local
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Large model files that should be in DVC
+# (we'll explicitly add these to DVC)
+model/saved_model/
+model_cache/
+*.pkl
+*.joblib
+*.h5
+*.pb
+*.onnx
+
+# Keep these in DVC but ignore others
+!data/raw/
+!data/processed/
+!data/train/
+!data/validation/
+!data/test/
+!models/
+!artifacts/ 

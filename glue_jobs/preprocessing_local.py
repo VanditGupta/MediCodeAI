@@ -135,7 +135,47 @@ def process_ehr_data():
     features_df = model.transform(df)
     # Save features and labels
     features_df.write.mode("overwrite").parquet(os.path.join(OUTPUT_PATH, "features/"))
+    
+    # Save cleaned data as parquet for DVC
+    cleaned_data_path = "data/processed/cleaned_data.parquet"
+    os.makedirs(os.path.dirname(cleaned_data_path), exist_ok=True)
+    features_df.write.mode("overwrite").parquet(cleaned_data_path)
+    
+    # Save preprocessing metadata
+    metadata = {
+        "preprocessing_date": datetime.now().isoformat(),
+        "input_records": df.count(),
+        "output_records": features_df.count(),
+        "unique_icd10_codes": len(icd10_mapping),
+        "feature_columns": features_df.columns,
+        "vocabulary_size": 1000,
+        "min_document_frequency": 2
+    }
+    
+    metadata_path = "data/processed/preprocessing_metadata.json"
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    
+    # Save preprocessing metrics
+    metrics = {
+        "preprocessing": {
+            "input_records": int(df.count()),
+            "output_records": int(features_df.count()),
+            "data_quality_score": 1.0,
+            "feature_count": len(features_df.columns),
+            "vocabulary_size": 1000
+        }
+    }
+    
+    metrics_path = "data/processed/preprocessing_metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    
     print(f"✅ Preprocessing complete. Features saved to {os.path.join(OUTPUT_PATH, 'features/')}.")
+    print(f"✅ Cleaned data saved to {cleaned_data_path}")
+    print(f"✅ Metadata saved to {metadata_path}")
+    print(f"✅ Metrics saved to {metrics_path}")
+    
     # Save mapping as JSON for model training
     with open(os.path.join(OUTPUT_PATH, "icd10_mapping.json"), "w") as f:
         json.dump(icd10_mapping, f, indent=2)

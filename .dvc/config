@@ -1,0 +1,9 @@
+[core]
+    remote = myremote
+    analytics = false
+['remote "myremote"']
+    url = s3://medicodeai-ehr-dvc-data/medicodeai
+    endpointurl = https://s3.amazonaws.com
+    region = us-east-1
+['remote "local"']
+    url = ../dvc_cache
