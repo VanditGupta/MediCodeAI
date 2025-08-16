@@ -4,9 +4,11 @@ A comprehensive MLOps pipeline for automated ICD-10 billing code prediction from
 
 ## 🌐 Live Application
 
-**Hosted EC2 Instance**: [http://54.80.207.185:8501/](http://54.80.207.185:8501/)
+**Hosted EC2 Instance**: [http://44.209.55.198:8501/](http://44.209.55.198:8501/)
 
-The application is currently hosted on AWS EC2 and accessible via the link above. This provides a live demonstration of the ICD-10 billing code prediction system.
+**Elastic IP Address**: `44.209.55.198` (Permanent - Never Changes)
+
+The application is currently hosted on AWS EC2 with an Elastic IP address, ensuring the URL remains consistent even after instance restarts. This provides a live demonstration of the ICD-10 billing code prediction system.
 
 ## Screenshot of the Live Application
 
